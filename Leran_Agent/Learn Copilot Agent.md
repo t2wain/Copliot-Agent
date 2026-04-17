@@ -93,7 +93,7 @@ They:
 - Access M365 data : Yes : Retrieval, not storage
 - Short‑term context : Yes : Session‑bound
 - Long‑term memory : With design : Explicit persistence
-- Python execution : As tools : Pure functions only
+- Python execution : **As tools** : Pure functions only
 - Side effects : No : (by default) Must be externalized
 
 ## Suggested Learning Path (Next Steps)
@@ -4548,7 +4548,7 @@ If you want, next we can:
 
 Design a schema registry for my agents
 
-# Agent Response
+# Agent Response 25
 
 ## Schema Registry for Agents (Learning‑First Design)
 
@@ -4768,3 +4768,1638 @@ If you want, next we can:
 - Design a **schema lifecycle flow** (draft → active → deprecated)
 - Create a **schema‑rule‑agent traceability table**
 - Review your current schemas for overlap or gaps
+
+# User Prompt 26 - Schema for Output
+
+Provide an example to instruct the agent to generate content matching a schema
+
+# Agent Response 26
+
+**Learning Goal (What you’re practicing)**
+
+> **How to instruct an agent to *generate* content that conforms to a schema — not just validate it.**
+
+This is different from validation.<br>
+Here, the schema is used as a **generation contract**.
+
+## 1. The Schema (Source of Truth)
+
+**Assume this schema already exists in your registry.**
+
+**schemas/calculation-output/v1.schema.json**
+
+```json
+{
+  "$id": "schema:calculation-output:v1",
+  "type": "object",
+  "required": ["result", "units", "assumptions"],
+  "properties": {
+    "result": {
+      "type": "number",
+      "description": "Calculated value"
+    },
+    "units": {
+      "type": "string",
+      "description": "Units of the result"
+    },
+    "assumptions": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}
+```
+
+This schema defines **shape and meaning**, not behavior.
+
+## 2. The Agent Instruction (This Is the Important Part)
+
+**This is the instruction text you give the agent.**
+
+**Correct instruction pattern**
+
+```txt
+When generating calculation results:
+
+- Produce output that conforms exactly to schema:calculation-output:v1.
+- The response MUST be a single JSON object.
+- Include all required fields defined by the schema.
+- Do not add additional fields.
+- Do not include explanatory text outside the JSON object.
+- Ensure all values match the expected data types.
+
+If you cannot populate a required field, do not generate output.
+Instead, explain what information is missing.
+```
+
+**Why this works**
+
+- It names the schema by identity
+- It constrains format, structure, and behavior
+- It prevents “helpful” but invalid prose
+
+## 3. Example: User Request → Agent Output
+
+**User request**
+
+> “Calculate the efficiency assuming a value of 0.87.”
+
+**Correct agent output**
+
+```json
+{
+  "result": 0.87,
+  "units": "efficiency ratio",
+  "assumptions": [
+    "Steady-state operation",
+    "No thermal losses"
+  ]
+}
+```
+
+- Matches schema
+- No extra keys
+- No markdown
+- No commentary
+
+## 4. What Not to Do (Very Common Mistake)
+
+**Bad instruction:**
+
+```txt
+Return the result as JSON if possible.
+```
+
+Why this fails:
+
+- “If possible” gives the model an escape hatch
+- No schema identity
+- No field constraints
+
+Bad output:
+
+```json
+{
+  "value": 0.87,
+  "notes": "This looks good!"
+}
+```
+
+This is valid JSON — but **schema-invalid**.
+
+## 5. Stronger Pattern: Schema‑Driven Generation Block
+
+For critical agents, use a dedicated generation block.
+
+```txt
+=== Output Contract ===
+Schema: schema:calculation-output:v1
+Format: JSON only
+
+Rules:
+- Output must validate against the schema.
+- All required fields must be present.
+- No additional properties are allowed.
+- No natural language outside the JSON object.
+=== End Contract ===
+```
+
+This pattern dramatically **improves reliability.**
+
+## 6. Optional: Pair with a Decision Rule (Best Practice)
+
+```txt
+Decision Rule: Calculation Output Generation
+
+Condition:
+- Calculation completed successfully
+
+Action:
+- Generate output conforming to schema:calculation-output:v1
+
+Failure Handling:
+- If output cannot conform to schema, do not emit JSON.
+```
+
+- Decision rules select **when** to generate
+- Schemas define **what** to generate
+
+## 7. Mental Model to Lock In
+
+- **Schema** → defines *shape*
+- **Instruction** → enforces *discipline*
+- **Agent** → fills in values
+- **Validator** → confirms correctness
+
+If you do this right, **generation and validation become symmetric**.
+
+## 8. Reusable Template (Copy‑Paste)
+
+You can reuse this everywhere:
+
+```txt
+Generate output that conforms to <SCHEMA_ID>.
+
+Constraints:
+- Output must be valid JSON.
+- Output must include all required fields.
+- Output must not include any additional fields.
+- Do not include explanatory text outside the JSON.
+
+If generation is not possible, explain why instead of generating output.
+```
+
+Replace \<SCHEMA_ID> with your registry ID.
+
+## Quick Learning Check
+
+Ask yourself:
+
+> “If I pasted the agent output into a schema validator, would it pass every time?”
+
+If the answer is “probably”, tighten the instruction.
+
+<hr>
+
+If you want, next we can:
+
+- Show multi‑schema generation (input vs output)
+- Add self‑validation loops
+- Design schema‑driven test cases
+- Practice rewriting one of your existing agent prompts
+
+# User Prompt 27 - Example Validation + Orchestration
+
+Show me more example of the use of validation rules and how the result is use as part of the orchestration
+
+# Agent Response 27
+
+**Big Picture First (Mental Model)**
+
+Think of **validation rules as traffic signals** in your agent’s workflow:
+
+- **Green** → proceed to next step
+- **Yellow** → branch, request clarification, or adjust path
+- **Red** → stop, escalate, or fail safely
+
+**Orchestration** is simply how the agent *responds* to those signals.
+
+**Orchestration Flow (Abstract)**
+
+```txt
+User Input
+   ↓
+Validation Rule
+   ↓
+Result (pass / fail / partial)
+   ↓
+Orchestration Decision
+   ↓
+Next Agent Action
+```
+
+Now let’s look at **real examples**.
+
+## Example 1: Input Validation Driving Tool Selection
+
+**Scenario**
+
+Engineering agent needs inputs before choosing a calculation tool.
+
+**Validation Rule: Engineering Input Gate**
+
+- Schema: **schema:engineering-input:v1**
+- Checks: required fields, types, ranges
+
+**Possible Validation Results → Orchestration**
+
+**Case A: Validation PASS**
+
+```txt
+Result: Valid
+```
+
+**Orchestration behavior**
+
+- Select calculation tool
+- Execute calculation action
+
+```txt
+→ Call CalculateEfficiencyAction
+```
+
+**Case B: Validation FAIL (Missing Field)**
+
+```txt
+Result: Invalid
+Missing: pressure
+```
+
+**Orchestration behavior**
+
+- Do NOT call tools
+- Ask user for missing input
+
+```txt
+→ Ask follow‑up question
+→ Wait for user input
+```
+
+**Key learning:**
+
+> Validation prevents premature tool execution.
+
+## Example 2: Validation Result Controls Branching
+
+**Scenario**
+
+Risk assessment agent with different paths for low vs high confidence data.
+
+**Validation Rule: Risk Context Validation**
+
+- Schema: **schema:risk-context:v1**
+- Outputs a **classification**, not just pass/fail
+
+**Validation Output (Structured)**
+
+```json
+{
+  "status": "partial",
+  "confidence": "low",
+  "issues": ["Missing impact score"]
+}
+```
+
+**Orchestration Logic**
+
+- **Validation Result** : **Orchestration Action**
+- status = valid : Proceed to automated risk scoring
+- status = partial : Request clarification
+- status = invalid : Escalate to human
+
+Validation feeds **routing logic**, not just gating.
+
+## Example 3: Output Validation Triggers Recovery
+
+**Scenario**
+
+Agent calls a calculation tool that returns malformed output.
+
+**Validation Rule: Calculation Output Verification**
+
+- Schema: **schema:calculation-output:v1**
+
+**Tool Output (Invalid)**
+
+```json
+{
+  "value": 42
+}
+```
+
+Missing required fields.
+
+**Orchestration Behavior**
+
+```txt
+Validation FAIL
+↓
+Retry logic triggered
+↓
+Re‑invoke tool OR
+Escalate failure
+```
+
+Validation protects downstream steps from garbage data.
+
+## Example 4: Multi‑Step Orchestration with Validation at Each Step
+
+**Scenario**
+
+Document processing agent (extract → analyze → summarize)
+
+**Step‑by‑Step Flow**
+
+1. Extraction
+    - Validation: **schema:extracted-text:v1**
+2. Analysis
+    - Validation: **schema:analysis-result:v1**
+3. Summary
+    - Validation: **schema:summary-output:v1**
+
+**Orchestration Rule**
+
+```txt
+After each step:
+- Validate output
+- If valid → continue
+- If invalid → stop pipeline
+```
+
+Each validation acts as a **checkpoint**.
+
+## Example 5: Validation Drives Agent Role Switching (Advanced)
+
+**Scenario**
+
+Primary agent hands off to specialist agent only if input is clean.
+
+**Validation Rule: Specialist Readiness Check**
+
+- Schema: **schema:specialist-input:v1**
+
+**Orchestration**
+
+```txt
+If validation PASS:
+   → Delegate to Specialist Agent
+Else:
+   → Remain with Primary Agent
+```
+
+Validation governs **agent‑to‑agent orchestration**.
+
+## Pattern Summary (Very Important)
+
+**Validation results are not binary checks — they are signals.**
+
+- **Validation Outcome** : **Typical Orchestration Response**
+- Pass : Proceed
+- Fail : Block
+- Partial : Ask / branch
+- Unexpected : Escalate
+
+**Anti‑Pattern to Avoid**
+
+Validation rules that:
+
+- Only return true/false
+- Are ignored by orchestration
+- Are buried inside prompts
+- Duplicate schema logic
+
+Validation rules should produce **explicit, interpretable results**.
+
+## Reusable Orchestration Template (Copy‑Ready)
+
+```txt
+After applying <Validation Rule>:
+
+- If validation passes:
+  → Proceed to <Next Action>
+
+- If validation fails:
+  → Do not proceed
+  → Explain the issue
+
+- If validation is partial:
+  → Request missing or unclear inputs
+```
+
+## Learning Check for You
+
+Try answering:
+
+> “What does my agent do differently when validation is partial vs failed?”
+
+If you can answer that clearly, your orchestration is **well designed**.
+
+<hr>
+
+If you want, next we can:
+
+- Design validation result schemas
+- Practice partial‑success orchestration
+- Walk through a full agent lifecycle example
+- Turn this into a review checklist
+
+# User Prompt 28 -  Full Example Orchestration + Validation
+
+Show a full agent orchestration example using validation results
+
+# Agent Response 28
+
+This is the capstone example that ties *schemas → validation rules → orchestration* into one coherent mental model.
+
+Below is a **full, end‑to‑end agent orchestration example**, written as a **learning walkthrough**, not tool‑specific code. You can map this directly to Declarative Agents, Copilot Studio, or a custom engine.
+
+I’ll show:
+
+1. The scenario
+2. The schemas
+3. The validation rules
+4. The orchestration flow (with branching)
+5. What the agent actually does at each step
+
+## Scenario: Engineering Calculation Agent
+
+**Goal:**
+
+Calculate system efficiency and return a structured result.
+
+**Key design principle:**
+
+> **Validation rules do not “check data”; they *control the flow*.**
+
+## 1. Schemas Involved (Contracts)
+
+**Input schema**
+
+- **Schema ID: schema:engineering-input:v1**
+- Purpose: Validate inputs before reasoning
+
+**Required fields**
+
+- temperature (number)
+- pressure (number)
+
+**Output schema**
+
+- **Schema ID: schema:calculation-output:v1**
+- Purpose: Validate generated result
+
+**Required fields**
+
+- result (number)
+- units (string)
+- assumptions (array of strings)
+
+## 2. Validation Rules (Decision Points)
+
+**Rule A — Engineering Input Gate**
+
+- Uses: **schema:engineering-input:v1**
+- Runs: Immediately after user input
+- Produces: **validation result object**
+
+**Rule B — Calculation Output Verification**
+
+- Uses: **schema:calculation-output:v1**
+- Runs: After calculation action
+- Produces: **pass / fail**
+
+## 3. Orchestration Flow (High Level)
+
+```txt
+User Request
+   ↓
+Input Validation Rule
+   ↓
+Validation Result
+   ↓
+Orchestration Decision
+   ↓
+Action or Follow‑up
+   ↓
+Output Validation Rule
+   ↓
+Final Response
+```
+
+## 4. Step‑by‑Step Walkthrough (With Branching)
+
+**Step 1 — User Request**
+
+> “Calculate efficiency at 80°C and 120 kPa.”
+
+
+**Step 2 — Apply Validation Rule A (Input Gate)**
+
+**Validation result (internal):**
+
+```json
+{
+  "status": "valid"
+}
+```
+
+All required fields present and valid.
+
+**Step 3 — Orchestration Decision**
+
+**Because status = valid:**
+
+```txt
+→ Proceed to calculation action
+```
+
+The agent **is allowed** to reason and use tools.
+
+**Step 4 — Execute Calculation Action**
+
+The agent (or tool) computes efficiency.
+
+**Step 5 — Generate Output (Draft)**
+
+```json
+{
+  "result": 0.87,
+  "units": "efficiency ratio",
+  "assumptions": [
+    "Steady-state operation",
+    "No heat loss"
+  ]
+}
+```
+
+**Step 6 — Apply Validation Rule B (Output Verification)**
+
+**Validation result:**
+
+```txt
+PASS
+```
+
+**Step 7 — Orchestration Finalizes Response**
+
+```txt
+→ Return output to user
+→ End workflow
+```
+
+This is a **happy path**.
+
+## 5. Alternate Path: Partial Validation (Branching)
+
+**User Request**
+
+> “Calculate efficiency at 80°C.”
+
+**Validation Rule A Result**
+
+```json
+{
+  "status": "partial",
+  "missing": ["pressure"]
+}
+```
+
+**Orchestration Decision**
+
+```txt
+→ DO NOT calculate
+→ Ask user for missing input
+```
+
+**Agent Response**
+
+```txt
+“I need the operating pressure to continue. Please provide it in kPa.”
+```
+
+- No reasoning
+- No tool calls
+- Safe pause
+
+## 6. Alternate Path: Output Validation Failure (Recovery)
+
+**Calculation Tool Returns (Bad Output)**
+
+```json
+{
+  "value": 0.87
+}
+```
+
+Schema violation.
+
+**Validation Rule B Result**
+
+```txt
+FAIL – missing required fields
+```
+
+**Orchestration Decision**
+
+Possible strategies (you choose one):
+
+- Retry calculation
+- Stop and report internal error
+- Escalate to human
+
+**Example orchestration:**
+
+```txt
+→ Retry calculation once
+→ If still invalid, fail safely
+```
+
+Validation protects downstream consumers.
+
+## 7. Why This Is “Correct” Agent Design
+
+This mirrors how enterprise orchestrators work, where:
+
+- Validation checks run before and after reasoning
+- Failures terminate or reroute execution
+- Only validated data crosses boundaries
+
+This is consistent with how orchestration and validation are described for agent systems in microsoft-365-copilot-extensibility, where checks gate execution rather than merely inspect outputs.
+
+## 8. Key Learning Takeaways (Important)
+
+1. **Validation rules are control points, not utilities**
+2. **Orchestration decisions are driven by validation results**
+3. **Schemas define contracts; rules enforce them**
+4. **No validation = no safe autonomy**
+
+## Mental Model to Keep
+
+- **Schemas = What is allowed**
+- **Validation rules = Is it allowed right now**
+- **Orchestration = What happens next**
+
+If you can explain your agent using those three sentences, you’ve designed it well.
+
+<hr>
+
+If you want, next we can:
+
+- Draw this as a **state machine**
+- Add **multi‑agent handoffs**
+- Introduce **confidence‑scored validation**
+- Convert this into a **design review checklist**
+
+# User Prompt 29 -  Partial vs Failed Validation
+
+Explain partial vs failed validation handling
+
+# Agent Response 29
+
+This distinction is **central to agent orchestration maturity**, and you’re right to pause on it.
+
+I’ll explain **partial vs failed validation handling** in a **learning‑first way**, moving from intuition → structure → orchestration impact → common mistakes. I’ll keep this concise but deep.
+
+## 1. Intuition First (Plain‑Language Difference)
+
+Think of validation outcomes like airport security:
+
+
+- **Passed validation**
+    - “You’re cleared — proceed to boarding.”
+- **Partial validation**
+    - “You’re missing one document — step aside and fix it.”
+- **Failed validation**
+    - “You’re not eligible — stop and escalate.”
+
+The key idea:
+
+- **Partial validation means *recoverable*.**
+- **Failed validation means *non‑recoverable* (right now).**
+
+## 2. Formal Definitions (Agent Context)
+
+**Passed Validation**
+
+- Input or output fully conforms to schema
+- All required fields present
+- All constraints satisfied
+
+**Orchestration meaning**
+
+- Safe to proceed
+- Agent may reason, call tools, or delegate
+
+**Partial Validation**
+
+- Structure is mostly valid
+- Some required information is missing or ambiguous
+- No rules are violated
+
+**Orchestration meaning**
+
+- Do not proceed
+- Do not fail
+- Enter a repair loop
+
+**Failed Validation**
+
+- Schema violations
+- Type errors, invalid values, forbidden fields
+- Safety or policy constraints violated
+
+**Orchestration meaning**
+
+- Stop the workflow
+- Do not retry blindly
+- Escalate or return error
+
+## 3. Why Partial ≠ Failed (Critical Insight)
+
+Many teams treat validation as boolean (pass/fail).
+
+That causes two problems:
+
+- Agents stop too aggressively
+- Agents ask unnecessary clarifying questions
+
+**Partial validation exists to preserve momentum safely.**
+
+## 4. Concrete Example (Same Input, Different Outcome)
+
+Schema requires:
+
+- temperature
+- pressure
+
+**Input A**
+
+```json
+{ "temperature": 80 }
+```
+
+- Structure OK
+- Missing pressure
+- No invalid values
+- **Partial validation**
+
+**Orchestration**
+
+```txt
+→ Ask user for pressure
+→ Resume workflow
+```
+
+Input B
+
+```json
+{ "temperature": "hot", "pressure": -10 }
+```
+
+- Type violation
+- Constraint violation
+- **Failed validation**
+
+**Orchestration**
+
+```txt
+→ Stop
+→ Explain error
+→ Do not proceed
+```
+
+## 5. How Orchestration Should Handle Each Case
+
+**Passed**
+
+```txt
+Validation → Proceed → Next action
+```
+
+**Partial**
+
+```txt
+Validation → Identify gaps → Request specific info → Re‑validate
+```
+
+Important:
+
+- Ask **only for what’s missing**
+- Do not re‑ask validated fields
+- Do not reason or call tools yet
+
+**Failed**
+
+```txt
+Validation → Stop → Report violation
+```
+
+Important:
+
+- No retries without new input
+- No guessing or coercion
+- Fail safely
+
+## 6. Validation Result Object (Recommended Pattern)
+
+To support orchestration, validation should return structured results, not booleans:
+
+```json
+{
+  "status": "partial",
+  "missing": ["pressure"],
+  "invalid": []
+}
+```
+
+or
+
+```json
+{
+  "status": "failed",
+  "invalid": ["temperature", "pressure"],
+  "reason": "Type and range violations"
+}
+```
+
+This allows orchestration to be **deterministic**.
+
+## 7. Common Anti‑Patterns (Avoid These)
+
+- Treating partial as failure
+- Guessing missing values
+- Re‑asking for already‑valid inputs
+- Continuing execution on partial
+- Retrying on failed validation
+
+Each of these causes either hallucination or unsafe autonomy.
+
+## 8. Mental Model to Lock In
+
+- **Partial = Pause & Repair**
+- **Failed = Stop & Escalate**
+
+If you remember only one thing, remember that.
+
+## 9. Quick Self‑Check (For You)
+
+Ask yourself:
+
+> “Can the user reasonably fix this with one more answer?”
+
+
+- If **yes** → partial
+- If **no** → failed
+
+That’s the simplest and most reliable heuristic.
+
+<hr>
+
+If you want, next we can:
+
+- Design a **validation result schema**
+- Practice classifying edge cases (partial vs failed)
+- Add **confidence scoring** to partial validation
+- Turn this into a **design checklist**
+
+# User Prompt 30 - Validation result Schema
+
+Design a validation result schema
+
+# Agent Response 30
+
+Designing a **validation result schema** is what turns validation from a check into a **first‑class orchestration signal.**
+
+I’ll do this as a **learning artifact**, not just a JSON blob:
+
+- Conceptual goals (why this schema exists)
+- The canonical schema design (copy‑paste ready)
+- How each field is used by orchestration
+- Examples for **pass / partial / failed**
+- Design rules and common extensions
+
+I’ll keep this **tool‑agnostic** and aligned with everything we’ve discussed so far.
+
+## 1. Design Goals (What This Schema Must Do)
+
+A validation result schema must:
+
+- Represent **three states** (pass / partial / failed)
+- Be **machine‑readable** for orchestration
+- Be **human‑explainable** for feedback
+- Avoid ambiguity (no booleans)
+- Scale across different validation rules
+
+Think of it as the **interface between validation and control flow.**
+
+## 2. Canonical Validation Result Schema (v1)
+
+**schema:validation-result:v1**
+
+```json
+{
+  "$id": "schema:validation-result:v1",
+  "type": "object",
+  "required": ["status"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["pass", "partial", "fail"],
+      "description": "Overall validation outcome"
+    },
+    "missing": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Required fields or information that are missing"
+    },
+    "invalid": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Fields or rules that are invalid or violated"
+    },
+    "messages": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Human-readable validation messages"
+    },
+    "source_rule": {
+      "type": "string",
+      "description": "Name or ID of the validation rule that produced this result"
+    }
+  },
+  "additionalProperties": false
+}
+```
+
+- Minimal but expressive
+- Explicit states
+- Safe defaults
+
+## 3. How Orchestration Uses Each Field
+
+- **Field** : **Orchestration Meaning**
+- status : Primary control signal
+- missing : What to ask the user for
+- invalid : What cannot be repaired automatically
+- messages : What to explain
+- source_rule : Traceability & debugging
+
+> **Orchestration logic should key off status, not message text.**
+
+## 4. Required Semantics (Very Important)
+
+- **Pass**
+    - status = **"pass"**
+    - missing and invalid **must be empty or omitted**
+- **Partial**
+    - status = **"partial"**
+    - **missing must not be empty**
+    - invalid **must be empty**
+- **Fail**
+    - status = **"fail"**
+    - invalid **must not be empty**
+    - **missing** may or may not be present
+
+This ensures **no ambiguous states.**
+
+## 5. Concrete Examples
+
+**Passed Validation**
+
+```json
+{
+  "status": "pass",
+  "source_rule": "Engineering Input Gate"
+}
+```
+
+Orchestration
+
+```txt
+→ Proceed
+```
+
+**Partial Validation (Recoverable)**
+
+```json
+{
+  "status": "partial",
+  "missing": ["pressure"],
+  "messages": [
+    "Pressure is required to continue the calculation."
+  ],
+  "source_rule": "Engineering Input Gate"
+}
+```
+
+**Orchestration**
+
+```txt
+→ Ask user for pressure
+→ Re-run validation
+```
+
+**Failed Validation (Non‑recoverable)**
+
+```json
+{
+  "status": "fail",
+  "invalid": ["temperature", "pressure"],
+  "messages": [
+    "Temperature must be a number.",
+    "Pressure must be greater than zero."
+  ],
+  "source_rule": "Engineering Input Gate"
+}
+```
+
+**Orchestration**
+
+```txt
+→ Stop
+→ Explain errors
+→ Do not proceed
+```
+
+## 6. Why This Schema Works
+
+This schema cleanly separates:
+
+- **Decision logic (status)**
+- **Repair hints (missing)**
+- **Hard blockers (invalid)**
+- **User communication (messages)**
+
+Which is exactly what orchestration needs.
+
+## 7. Anti‑Patterns This Avoids
+
+- Boolean **isValid**
+- Encoding meaning in message text
+- Mixing missing and invalid errors
+- Forcing orchestration to “interpret” text
+- Guessing next steps
+
+## 8. Optional Extensions (When You’re Ready)
+
+You can extend later with:
+
+```json
+"severity": { "enum": ["low", "medium", "high"] },
+"confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+"retryable": { "type": "boolean" }
+```
+
+But **do not start here.**
+
+The core schema above is enough for 90% of agents.
+
+## 9. Mental Model to Lock In
+
+- **This schema is not about validation.**
+- **It is about orchestration control.**
+
+If an orchestrator can decide the next step **without reading prose**, you’ve designed it correctly.
+
+## 10. Quick Self‑Check
+
+Ask yourself:
+
+> “Could a state machine drive my agent using only this object?”
+
+- if **yes** → perfect
+- if **no** → simplify.
+
+<hr>
+
+If you want, next we can:
+
+- Add this schema to your **schema registry**
+- Map it to **decision rules**
+- Design **test cases** for each status
+- Convert orchestration into a **state diagram**
+
+# User Prompt 31 - Regex
+
+Do you recommend the use of regular expression in schema design?
+
+# Agent Response 31
+
+**Short Answer (My Recommendation)**
+
+**Yes — but very sparingly.**
+
+Use **regular expressions in schema design only for *format-level* constraints**, and **never for business logic, orchestration decisions, or semantics.**
+
+> **Regex belongs at the edges of the system, not at the core.**
+
+## 1. Why This Question Matters in Agent Systems
+
+In agent-based systems, schemas do three different jobs:
+
+- **Structural validation** (shape, types)
+- **Control-flow signaling** (pass / partial / fail)
+- **Human repair loops** (asking for missing info)
+
+Regex can help with **(1)**<br>
+Regex hurts **(2)** and **(3)** if overused.
+
+## 2. ✅ When Regex Is Appropriate in Schemas
+
+Use regex **only when the rule answers this question:**
+
+> “Is this string shaped correctly?”
+
+**Good regex use cases**
+
+- IDs and codes
+    - "REQ-1234"
+    - "ENG-ABC-001"
+- Fixed-format identifiers
+    - UUIDs
+    - Ticket numbers
+- Strict syntactic formats
+    - ISO-like date strings (if strings are required)
+    - Version tags (v1.2.3)
+
+Example (Good)
+
+```json
+"request_id": {
+  "type": "string",
+  "pattern": "^REQ-[0-9]{4}$"
+}
+```
+
+- Deterministic
+- Easy to explain
+- Clear failure mode
+
+## 3. When Regex Should Not Be Used
+
+Avoid regex when the rule answers this instead:
+
+> “Does this value make sense?”
+
+**Bad regex use cases**
+
+- Numeric ranges (**temperature > 0**)
+- Conditional requirements
+- Cross-field dependencies
+- Semantic meaning
+- Business rules
+
+**Example (Bad)**
+
+```json
+"temperature": {
+  "type": "string",
+  "pattern": "^(?!0$).*"
+}
+```
+
+- Obscure
+- Hard to explain to users
+- Poor validation feedback
+- Breaks partial vs failed logic
+
+## 4. Why Regex Is Dangerous for Agent Orchestration
+
+Regex failures are binary and opaque:
+
+- Match → pass
+- No match → fail
+
+This causes problems:
+
+- **Problem** : **Impact**
+- No “partial” state : Agent can’t repair
+- Poor error messages : Bad UX
+- Hidden logic : Hard to maintain
+- Hard to reason about : Orchestration ambiguity
+
+In other words:
+
+> **Regex collapses nuance. Agents need nuance.**
+
+## 5. Recommended Pattern (Best Practice)
+
+Layer your validation
+
+- **Layer** : **Technique**
+- Schema : Types, required fields, light regex
+- Validation rule : Semantics, ranges, cross-field logic
+- Orchestration : Pass / partial / fail decisions
+
+**Example**
+
+**Schema**
+
+```json
+"pressure": { "type": "number" }
+```
+
+**Validation rule**
+
+```txt
+pressure must be > 0
+```
+
+- Clean separation
+- Better messages
+- Easier repair loops
+
+## 6. Regex + Partial Validation (Important Rule)
+
+If you do use regex in a schema:
+
+> **Regex failure should usually map to fail, not partial.**
+
+Why?
+
+- Format errors are not “missing”
+- They cannot be inferred or repaired safely
+
+This reinforces why regex must be used sparingly.
+
+## 7. Decision Table (Use This)
+
+Question : Use Regex?
+Is it a fixed format string? : Yes
+Is it numeric or logical? : No
+Does it affect orchestration? : No
+Will users need help fixing it? : No
+Is it purely syntactic? : Yes
+
+## 8. Mental Model to Lock In
+
+- **Schemas define shape.**
+- **Regex defines syntax.**
+- **Validation rules define meaning.**
+- **Orchestration defines behavior.**
+
+When regex starts defining meaning, it’s in the wrong place.
+
+## 9. Practical Recommendation for Your Work
+
+Given everything we’ve designed together (schemas, validation results, orchestration):
+
+**Use regex for:**
+
+- IDs
+- Codes
+- Tokens
+
+**Avoid regex for:**
+
+- Business rules
+- Numeric logic
+- Cross-field conditions
+- Agent decision points
+
+## Final Verdict
+
+- **Regex is a scalpel, not a hammer.**
+- Use it with restraint, clarity, and only at the schema boundary.
+
+<hr>
+
+If you want, next we can:
+
+- Refactor an existing schema to remove bad regex
+- Decide regex vs enum vs rule for specific fields
+- Create a **regex audit checklist** for schemas
+- Map regex failures to validation-result outcomes
+
+# User Prompt 32 - Example Pass / Partial / Failed
+
+Should I include examples of pass / partial / failed validations in my instruction?
+
+# Agent Response 32
+
+**Short answer: Yes—but selectively and intentionally.**
+
+Include **examples of *partial* and *failed* validations by default**; include ***pass* examples only when they add clarity or constrain output format**.
+
+Below is a **learning‑oriented breakdown** to help you decide when, why, and how to include them—grounded in how agent instructions are typically refined using examples to guide behavior, as described in microsoft-365-copilot-extensibility.
+
+## 1. Why examples matter in instructions (learning lens)
+
+Examples do **three distinct jobs** for an agent:
+
+- **Disambiguation** – clarify how to interpret rules
+- **Boundary-setting** – show what not to do
+- **Control-flow guidance** – demonstrate how outcomes affect next steps
+
+The third point is especially important for **partial vs failed validation**, which is not intuitive without examples.
+
+
+## 2. Recommendation by validation state
+
+**A. PASS — Optional, use sparingly**
+
+**When to include:**
+
+- When output format must be exact
+- When the agent tends to over‑explain or add prose
+- When success behavior is non‑obvious
+
+**When to skip:**
+
+- When “pass = proceed normally” is obvious
+- When you already constrain output via schema + rules
+
+**Why:**
+
+- Pass examples are often redundant. Overusing them can make instructions verbose and reduce flexibility.
+
+**B. PARTIAL — Strongly recommended**
+
+**Always include at least one partial example.**
+
+**Why partial examples are critical:**
+
+- They teach the agent that **partial ≠ fail**
+- They demonstrate **repair behavior** (ask, don’t guess)
+- They prevent premature termination or hallucination
+
+Without a partial example, agents often:
+
+- Treat partial as fail
+- Guess missing fields
+- Continue execution incorrectly
+
+**C. FAIL — Strongly recommended**
+
+**Always include at least one fail example.**
+
+**Why fail examples matter:**
+
+- They show **hard stop behavior**
+- They clarify what is *non‑recoverable*
+- They prevent retry loops or unsafe assumptions
+
+Fail examples are how you teach:
+
+> “This is not fixable by asking another question.”
+
+## 3. Minimal, effective instruction pattern
+
+**Here’s a concise pattern that works well in practice:**
+
+```txt
+Validation handling:
+
+- If validation status is "pass":
+  Proceed with the workflow.
+
+- If validation status is "partial":
+  Do not proceed.
+  Ask the user only for the missing information.
+
+  Example:
+  Input missing pressure → ask for pressure.
+
+- If validation status is "fail":
+  Do not proceed.
+  Explain the validation errors.
+```
+
+This keeps **pass implicit** and **partial/fail explicit**.
+
+## 4. When you should include a PASS example
+
+Include a pass example only if one of these is true:
+
+- Output must be **JSON-only**
+- Output must match a schema **exactly**
+- The agent tends to add explanations on success
+- The “next step” after pass is non-obvious
+
+Example (only when needed):
+
+```txt
+Example (pass):
+Validation result: pass
+Action: return calculation output as JSON only.
+```
+
+## 5. What to avoid (common learning pitfalls)
+
+- Including only pass examples
+- Including prose-heavy examples
+- Mixing pass/partial/fail behaviors in one example
+- Encoding logic in narrative instead of structure
+
+Remember: **examples are executable mental models**, not documentation.
+
+## 6. Learning heuristic (easy rule to remember)
+
+> **If the agent must behave differently, show an example.**
+
+- Pass → often same behavior → example optional
+- Partial → different behavior → example required
+- Fail → different behavior → example required
+
+## Final recommendation
+
+- **Validation state** : **Include example?** : **Why**
+- Pass : Sometimes : Format or flow clarity
+- Partial : Yes : Teaches repair behavior
+- Fail : Yes : Teaches stop/escalation
+
+This aligns with best practices for instruction design that emphasize using **targeted examples to shape agent behavior without overloading prompts**, as outlined in microsoft-365-copilot-extensibility.
+
+<hr>
+
+If you’d like, next we can:
+
+- Rewrite one of your existing instructions using this pattern
+- Reduce instruction length while keeping behavior stable
+- Create a “**validation examples checklist**” for future agents
+
+# User Prompt 33 - Regex vs Enum vs Rule
+
+Decide regex vs enum vs rule for specific fields
+
+# Agent Response 33
+
+## 1. The Core Learning Model (One Minute)
+
+Every field answers **one primary question**:
+
+- **Question the field answers** : **Use**
+- “Is the shape of this value correct?” : Regex
+- “Is this value one of a known set?” : Enum
+- “Does this value make sense in context?” : Rule
+
+> **If you’re unsure, choose the simpler option and push logic to rules.**
+
+## 2. Quick Decision Tree (Memorize This)
+
+```txt
+Is it a string with a strict format?
+→ Regex
+
+Is it a small, stable set of allowed values?
+→ Enum
+
+Does it depend on other fields, ranges, or meaning?
+→ Rule
+```
+
+## 3. Field‑by‑Field Examples (Most Common Cases)
+
+### A. IDs and Identifiers
+
+- **Field: request_id (e.g., REQ‑1234)**
+- **Decision**: Regex
+- **Why**: Format matters; meaning does not.
+
+```json
+"request_id": {
+  "type": "string",
+  "pattern": "^REQ-[0-9]{4}$"
+}
+```
+
+- Clear
+- Deterministic
+- Schema‑level
+
+### B. Status / State Fields
+
+- **Field: status (open, closed, pending)**
+- **Decision**: Enum
+- **Why**: Closed set; meaningful categories.
+
+```json
+"status": {
+  "type": "string",
+  "enum": ["open", "pending", "closed"]
+}
+```
+
+### C. Numeric Ranges
+
+- **Field: pressure**
+- **Decision**: Rule
+- **Why**: Numeric semantics, not syntax.
+
+**Do NOT use regex**
+
+```txt
+Rule:
+pressure must be > 0
+```
+
+- Better error messages
+- Supports partial vs fail
+- Easier to change later
+
+### D. Conditional Requirements
+
+- **Field: work_package_id**
+- **Decision**: Rule
+- **Why**: Depends on another field.
+
+```txt
+Rule:
+If mode = "work-package"
+→ work_package_id is required
+```
+
+- Cannot be expressed cleanly in schema
+- Belongs in validation logic
+
+### E. Categorical with Business Meaning
+
+- **Field: priority (low / medium / high)**
+- **Decision**: Enum
+- **Why**: Small, stable, semantic set.
+
+```json
+"priority": {
+  "type": "string",
+  "enum": ["low", "medium", "high"]
+}
+```
+
+- Predictable
+- Human‑readable
+- Orchestration‑friendly
+
+### F. Free‑Text with Limits
+
+- **Field**: description
+- **Decision**: Use Rule (length/content), Don't Use Regex
+
+```json
+"description": {
+  "type": "string"
+}
+```
+```txt
+Rule:
+description must be ≤ 500 characters
+```
+
+- Avoid fragile regex
+- Better UX
+- Easier to evolve
+
+### G. Dates & Times
+
+**Field: start_date**
+**Best practice**: Use native date type if possible
+
+If string is unavoidable → **Regex only for format**, rule for logic.
+
+```json
+"start_date": {
+  "type": "string",
+  "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+}
+```
+```txt
+Rule:
+start_date must be before end_date
+```
+
+Clean separation of concerns
+
+### H. Validation Result status (from earlier)
+
+- **Field: status (pass / partial / fail)**
+- **Decision**: Enum (always)
+
+```json
+"status": {
+  "type": "string",
+  "enum": ["pass", "partial", "fail"]
+}
+```
+
+- Explicit control flow
+- No ambiguity
+- Orchestration‑safe
+
+## 4. Common Anti‑Patterns (Avoid These)
+
+- Regex for numeric logic
+- Regex for cross‑field rules
+- Enum for values that change frequently
+- Rules for pure string formatting
+- Mixing enum + regex for same constraint
+
+These create **brittle schemas** and confuse agents.
