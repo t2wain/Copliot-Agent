@@ -1,8 +1,8 @@
 # Data in Engineering Drawing
 
 A typical engineering drawing contains data that can be extracted to build a registry of cross-reference information such as:
-- Equipment tags
-- Drawing information in the title block
+- Equipment tags (**Equipment Tag Extraction Agent**)
+- Drawing information in the title block (**Drawing Title Block Agent**)
 - Drawing references
 - Continuation drawings
 - History of revisions
@@ -22,9 +22,9 @@ Multiple Declarative Agents can be created to perform data extractions for these
 
 Copilot can process engineering drawing in PDF format or as an image (ex. JPEG). When the entire drawing is provided as a PDF document, too much information can sometime affect the accuracy of the extraction. 
 
-Data in engineering drawing are embedded by position within the drawing. For example, drawing identity is contained within the drawing title block which is located in the bottom-right corner. Parsing accuracy can be improved by providing just the image of the drawing title block.
+Data in engineering drawing are **embedded by position** within the drawing. For example, drawing identity is contained within the drawing title block which is located in the bottom-right corner. Parsing accuracy can be improved by providing just the image of the drawing title block.
 
-To further improve accuracy, other external validation process should be applied on the extracted data.
+To further improve accuracy, **other external validation process** should be applied on the extracted data.
 
 # Using Existing Copilot to Build Better Instruction for Agents
 
