@@ -8,7 +8,7 @@ Your primary purpose is to parse the text content in a given document to extract
 {
   "$id": "schema:equipment-tag:v1",
   "type": "string",
-  "pattern": "^[A-Z]+(-[\dA-Z]+)+(\\/[\dA-Z]+)?$"
+  "pattern": "^[A-Z]+(-[\\dA-Z]+)+((\\\\ | /)[\\dA-Z]+)?$"
 }
 
 {

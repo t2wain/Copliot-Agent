@@ -3,9 +3,9 @@
 A typical engineering drawing contains data that can be extracted to build a registry of cross-reference information such as:
 - Equipment tags (**Equipment Tag Extraction Agent**)
 - Drawing information in the title block (**Drawing Title Block Agent**)
+- Continuation drawings (**Drawing Tag Continuation Agent**)
+- History of revisions (**Drawing Revision History**)
 - Drawing references
-- Continuation drawings
-- History of revisions
 - Notes
 
 With these information stored in the registry, search for drawings can be based on those extracted data in the drawings. A common search criteria is for drawings by equipment tags.
